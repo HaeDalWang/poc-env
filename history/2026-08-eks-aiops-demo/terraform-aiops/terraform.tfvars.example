@@ -1,0 +1,12 @@
+cluster_name     = "example"
+hosted_zone_name = "example.com"
+
+kagent_crds_chart_version     = "<PINNED_VERSION>"
+kagent_chart_version          = "<PINNED_VERSION>"
+kagent_aws_mcp_proxy_version  = "<PINNED_VERSION>"
+kagent_bedrock_model_id       = "<INFERENCE_PROFILE_ID>"
+kagent_slack_channel_id       = "<CHANNEL_ID>"
+
+# 비밀값은 이 파일에 쓰지 말고 환경변수로 주입한다.
+# TF_VAR_kagent_slack_bot_token
+# TF_VAR_kagent_grafana_service_account

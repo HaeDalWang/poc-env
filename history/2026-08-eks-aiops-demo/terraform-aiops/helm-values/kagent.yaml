@@ -1,0 +1,68 @@
+providers:
+  default: bedrock
+  bedrock:
+    provider: Bedrock
+    model: ${bedrock_model_id}
+    config:
+      region: ${bedrock_region}
+controller:
+  agentDeployment:
+    serviceAccountName: ${agent_service_account_name}
+ui:
+  # 설정하면 컨트롤러가 에이전트 파드에 KAGENT_UI_URL을 자동 주입 —
+  # create_share_link 도구가 상대경로가 아닌 클릭 가능한 절대 URL을 반환하게 됨
+  externalUrl: ${kagent_ui_external_url}
+
+# ==============================================================================
+# 기본 제공 에이전트 전부 비활성화
+# ==============================================================================
+# 이 클러스터가 실제로 쓰는 건 kagent.tf가 직접 정의한 k8s-allinone-agent 하나뿐임.
+# 차트 기본값은 기능별 에이전트 10개를 전부 켜는데, allinone 에이전트는 다른 에이전트에
+# 위임(delegation)하지 않고 kagent-tool-server 도구를 직접 붙여 쓰는 구조라
+# (위임 방식은 세션 히스토리 손상 버그 kagent-dev/kagent#2277의 트리거 — kagent.tf 주석 참고)
+# 나머지는 참조되는 곳이 전혀 없이 파드만 점유함. 에이전트당 requests 50m CPU / 128Mi.
+#
+# UI의 Agents 목록도 이걸로 같이 정리됨 — 데모에서 쓰지도 않는 에이전트 10개가
+# 먼저 보이는 것보다, 실제로 동작하는 하나만 남는 편이 설명하기 좋음.
+k8s-agent:
+  enabled: false
+kgateway-agent:
+  enabled: false
+istio-agent:
+  enabled: false
+promql-agent:
+  enabled: false
+observability-agent:
+  enabled: false
+argo-rollouts-agent:
+  enabled: false
+helm-agent:
+  enabled: false
+cilium-policy-agent:
+  enabled: false
+cilium-manager-agent:
+  enabled: false
+cilium-debug-agent:
+  enabled: false
+
+# ==============================================================================
+# 쓰지 않는 번들 MCP 도구 비활성화
+# ==============================================================================
+# grafana-mcp: observability-agent 전용으로 붙어 있던 것. 그 에이전트를 껐고,
+#   allinone 에이전트는 메트릭을 prometheus_* 도구로 Thanos에서 직접 조회하므로 불필요.
+#   (차트 의존성 condition이 "grafana-mcp.enabled, observability-agent.enabled"인데
+#    Helm은 나열된 경로 중 처음 존재하는 것을 쓰므로 이 값 하나로 꺼짐)
+# querydoc: doc2vec 기반 문서 검색 MCP. 동작하려면 OpenAI API 키가 따로 필요한데
+#   이 클러스터는 Bedrock만 쓰고 키를 넣지 않았음 — 즉 지금도 실제로는 못 쓰는 상태.
+#   문서 조회는 fetch(런북) + aws___search_documentation(AWS 문서)으로 대체됨.
+grafana-mcp:
+  enabled: false
+querydoc:
+  enabled: false
+
+# 아래 둘은 절대 끄지 말 것:
+# - kagent-tools: 끄면 templates/toolserver-kagent.yaml 게이팅에 걸려
+#   RemoteMCPServer "kagent-tool-server"가 사라짐 → allinone 에이전트의 k8s_*/prometheus_*/
+#   kubescape_* 등 도구 전부가 한 번에 날아감.
+# - kmcp: MCPServer CRD를 실제로 Deployment로 만들어주는 컨트롤러.
+#   slack/fetch/aws MCP 서버 세 개가 전부 여기에 의존함.

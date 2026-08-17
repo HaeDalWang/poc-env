@@ -1,0 +1,114 @@
+deploymentMode: Distributed
+loki:
+  auth_enabled: false
+  schemaConfig:
+    configs:
+    - from: "2026-06-01"
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
+        prefix: loki_index_
+        period: 24h
+  storage_config:
+    aws:
+      region: ${s3_bucket_region}
+      bucketnames: ${s3_bucket}
+      s3forcepathstyle: false
+  storage:
+    s3:
+      region: ${s3_bucket_region}
+    bucketNames:
+      chunks: ${s3_bucket}
+      ruler: ${s3_bucket}
+  querier:
+    max_concurrent: 4
+  ingester:
+    chunk_encoding: snappy
+  pattern_ingester:
+    enabled: true
+  limits_config:
+    allow_structured_metadata: true
+    volume_enabled: true
+    retention_period: 672h
+  compactor:
+    retention_enabled: true
+    delete_request_store: s3
+  # 주의: 이 키는 rulerConfig다. loki.ruler로 쓰면 차트가 모르는 키라 통째로 무시되고,
+  # 렌더된 config에는 차트 기본값(storage/wal)만 남는다 — alertmanager_url도 enable_api도
+  # 사라져서 ruler가 알림을 아무 데도 못 보내는 상태가 된다(2026-08-11 실측으로 확인).
+  # alertmanager_url은 storage 하위가 아니라 rulerConfig 직속 필드인 것도 같이 주의.
+  rulerConfig:
+    enable_api: true
+    wal:
+      dir: /var/loki/ruler-wal
+    # ruler.directories로 규칙을 선언하려면 storage가 반드시 local이어야 함(차트 values 주석).
+    # S3로 두면 규칙을 Ruler API로 따로 올려야 해서 코드로 관리가 안 됨.
+    storage:
+      type: local
+      local:
+        directory: /etc/loki/rules
+    alertmanager_url: http://prometheus-alertmanager.monitoring.svc.cluster.local:9093
+ingester:
+  replicas: 3
+  zoneAwareReplication:
+    enabled: false
+querier:
+  replicas: 3
+  maxUnavailable: 2
+queryFrontend:
+  replicas: 2
+  maxUnavailable: 1
+queryScheduler:
+  replicas: 2
+distributor:
+  replicas: 3
+  maxUnavailable: 2
+compactor:
+  replicas: 1
+indexGateway:
+  replicas: 2
+  maxUnavailable: 1
+ruler:
+  replicas: 1
+  maxUnavailable: 1
+  # 규칙 파일. 최상위 키는 테넌트 ID인데, loki.auth_enabled=false면 Loki가 모든 요청을
+  # "fake" 테넌트로 처리하므로 디렉토리 이름도 fake여야 규칙이 로드된다.
+  directories:
+    fake:
+      saltmart-app-errors.yaml: |
+        groups:
+        - name: saltmart-app-errors
+          rules:
+          # saltmart 앱들은 structlog로 JSON 로그를 찍으므로 raw 텍스트를 grep하지 않고
+          # | json 으로 파싱해서 필드로 판정한다. 주의: 스트림 라벨 level은 Alloy가 붙인
+          # "Info"/"Warning"(대문자)이고, | json 이후의 level은 앱이 찍은 "error"(소문자)다.
+          # 아래는 파싱 후 값을 보므로 소문자가 맞음(2026-08-11 라이브 쿼리로 확인).
+          #
+          # by (namespace, service_name)으로 어느 서비스가 터졌는지 알림에 남기되,
+          # Alertmanager route가 group_by: [namespace]라서 saltmart에서 여러 서비스가
+          # 동시에 에러를 뿜어도 알림은 하나로 묶여 나간다 — 연쇄 장애에서 kagent 세션이
+          # 서비스 수만큼 생기는 걸 막아줌.
+          - alert: SaltmartApplicationErrors
+            expr: |
+              sum by (namespace, service_name) (
+                rate({namespace="saltmart"} | json | level="error" [5m])
+              ) > 0
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "saltmart application is logging errors"
+              description: "One or more saltmart services are emitting error-level logs. The service that logs the error is not necessarily the one that is broken - follow its upstream dependencies."
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+singleBinary:
+  replicas: 0
+lokiCanary:
+  enabled: false
+test:
+  enabled: false

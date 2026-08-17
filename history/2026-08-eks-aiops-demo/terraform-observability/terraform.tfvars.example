@@ -1,0 +1,9 @@
+cluster_name     = "example"
+hosted_zone_name = "example.com"
+
+prometheus_operator_crds_chart_version = "<PINNED_VERSION>"
+kube_prometheus_stack_chart_version    = "<PINNED_VERSION>"
+thanos_chart_version                   = "<PINNED_VERSION>"
+loki_chart_version                     = "<PINNED_VERSION>"
+k8s_monitoring_chart_version           = "<PINNED_VERSION>"
+tempo_distributed_chart_version        = "<PINNED_VERSION>"

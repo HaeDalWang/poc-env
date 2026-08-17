@@ -1,0 +1,9 @@
+.DS_Store
+**/.terraform/*
+**/__pycache__/
+*.py[cod]
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.auto.tfvars
+!*.tfvars.example

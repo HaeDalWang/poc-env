@@ -1,0 +1,4 @@
+cluster_name     = "example"
+hosted_zone_name = "example.com"
+
+argocd_chart_version = "<PINNED_VERSION>"

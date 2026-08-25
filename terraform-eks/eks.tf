@@ -351,7 +351,7 @@ locals {
     "aws-ebs-csi-driver",
     "eks-pod-identity-agent",
     "metrics-server",
-    "snapshot-controller"
+    # "snapshot-controller"
   ]
 }
 
@@ -438,10 +438,11 @@ resource "aws_eks_addon" "external_dns" {
   addon_version = data.aws_eks_addon_version.external_dns.version
 
   configuration_values = jsonencode({
-    # Gateway API CRD 배포 후 주석제거하여 다시 배포
-    # sources = [
-    #   "gateway-httproute"
-    # ]
+    sources = [
+      "service",
+      "ingress",
+      "gateway-httproute"
+    ]
     domainFilters = [
       data.aws_route53_zone.this.name
     ]
@@ -506,4 +507,29 @@ resource "helm_release" "aws_load_balancer_controller" {
   wait          = true
   wait_for_jobs = true
   timeout       = 180
+}
+
+# yaml content 이름이 언제나 바뀔 수 있으므로 확인 필요
+# ref: https://github.com/kubernetes-sigs/gateway-api/releases
+data "http" "gateway_api" {
+  url = "https://github.com/kubernetes-sigs/gateway-api/releases/download/v${var.gateway_api_crd_version}/standard-install.yaml"
+}
+data "kubectl_file_documents" "gateway_api" {
+  content = data.http.gateway_api.response_body
+}
+
+resource "kubectl_manifest" "gateway_api_crds" {
+  for_each = {
+    for document in data.kubectl_file_documents.gateway_api.documents :
+    sha1(document) => document
+  }
+
+  yaml_body         = each.value
+  server_side_apply = true
+  force_conflicts   = false
+
+  lifecycle {
+    # CRD 삭제 = 해당 CR 전체 삭제 가능성이라 Terraform destroy 방지
+    prevent_destroy = true
+  }
 }

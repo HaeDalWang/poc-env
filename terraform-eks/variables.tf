@@ -33,3 +33,8 @@ variable "acm_certificate_domain" {
   description = "조회할 기존 ISSUED ACM 인증서의 primary domain"
   type        = string
 }
+
+variable "gateway_api_crd_version" {
+  description = "GatewayAPI CRD의 버전"
+  type        = string
+}

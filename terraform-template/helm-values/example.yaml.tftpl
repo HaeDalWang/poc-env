@@ -1,0 +1,30 @@
+# helm_release의 values로 넘기는 템플릿 예시
+# templatefile()로 렌더링하며, ${...} 안의 값은 helm.tf에서 주입한다.
+#
+# 주의: Helm 차트 자체의 Go 템플릿 문법({{ }})은 그대로 두면 되지만,
+#       Terraform의 ${ } 와 겹치는 문자열을 리터럴로 넣어야 할 때는 $${ } 로 이스케이프한다.
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 256Mi
+
+# 기반 스택에서 조회한 값 주입
+clusterName: ${cluster_name}
+
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/certificate-arn: ${acm_certificate_arn}
+  hosts:
+  - host: example.${hosted_zone_name}
+    paths:
+    - path: /
+      pathType: Prefix

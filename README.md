@@ -16,10 +16,22 @@
 | 경로 | 역할 |
 |---|---|
 | terraform-eks/ | PoC가 공유할 수 있는 최소 EKS 기반과 기존 Route53/ACM 연동 |
+| terraform-template/ | 기반 위에 새 스택을 올릴 때 복사하는 Terraform 골격 |
+| terraform-envoygateway-nlb/ | NLB(ACM 종단) + Envoy Gateway 공용 게이트웨이. 다른 스택이 Route만 붙여 쓴다 |
+| terraform-gitlab-selfhosting/ | GitLab 자체호스팅. CloudNativePG + Valkey + S3 |
 | history/ | 완료·진행 중인 PoC 사례. 각 사례는 독립된 문서, Terraform root/state, 증거를 소유 |
 | history/_template/ | 새 사례를 시작할 때 복사하는 표준 골격 |
 
-현재 기존 AIOps 데모는 history/2026-08-eks-aiops-demo/에 보존한다. 이 사례는 하나의 클러스터 위에서 platform, CI/CD, observability, AIOps를 각각 독립 Terraform state로 배포하도록 분리돼 있다.
+기반 위에 올라가는 스택은 terraform-eks를 **조회만** 하고 수정하지 않는다.
+각 스택은 자체 state를 가지며 독립적으로 배포·삭제된다.
+코드 작성 규칙은 [CLAUDE.md](CLAUDE.md)에 있다.
+
+## 현재 사례
+
+| 경로 | 상태 | 내용 |
+|---|---|---|
+| history/2026-08-eks-aiops-demo/ | 보존 | 하나의 클러스터 위에서 platform, CI/CD, observability, AIOps를 독립 Terraform state로 분리한 기존 데모 |
+| history/2026-08-geoip-access-control/ | 비교 기준 작성 중 | 고객이 제시한 Traefik Middleware 방안과 NLB→ALB+WAF 방안을 동일 조건으로 검증하기 위한 사례. 판정 전 |
 
 ## PoC 판정 원칙
 

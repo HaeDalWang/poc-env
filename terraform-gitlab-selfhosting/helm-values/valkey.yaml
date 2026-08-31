@@ -1,0 +1,42 @@
+# GitLab 전용 Valkey
+fullnameOverride: gitlab-valkey
+
+image:
+  repository: valkey/valkey
+  # 차트 appVersion은 9.1.1이지만 GitLab 19.x 요구는 7.2다. 비우면 9.1.1이 뜬다
+  tag: "7.2.14"
+
+# PVC를 쓰는데 워크로드가 Deployment라 RollingUpdate로는 새 파드가 볼륨을 못 잡는다
+deploymentStrategy: Recreate
+
+auth:
+  enabled: true
+  usersExistingSecret: gitlab-valkey
+  aclUsers:
+    default:
+      permissions: "~* &* +@all"
+
+dataStorage:
+  enabled: true
+  requestedSize: 8Gi
+  className: ebs
+
+# valkeyConfig는 valkey.conf를 통째로 대체한다. 여기 없는 항목은 기본값이 아니라 사라진다
+# https://valkey.io/topics/valkey.conf/
+valkeyConfig: |
+  dir /data
+  appendonly yes
+  maxmemory 768mb
+  # allkeys-lru로 바꾸면 Sidekiq 큐가 조용히 사라진다. 쓰기 실패가 낫다
+  maxmemory-policy noeviction
+
+nodeSelector:
+  workload: gitlab
+
+# 비우면 BestEffort QoS가 되어 노드 메모리 압박 시 가장 먼저 축출된다
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi

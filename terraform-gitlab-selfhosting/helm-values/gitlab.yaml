@@ -1,0 +1,147 @@
+global:
+  # GitLab 전용 노드로 격리. 빼면 공용 노드에 배치되어 다른 워크로드를 밀어낸다
+  nodeSelector:
+    workload: gitlab
+
+  hosts:
+    domain: ${domain_name}
+    # 외부(NLB)에서 TLS를 종단하므로 생성되는 URL만 https로 만든다
+    https: true
+    gitlab:
+      name: ${gitlab_host}
+
+  # 노출은 terraform-envoygateway-nlb의 공용 Gateway를 빌려 쓴다
+  ingress:
+    enabled: false
+  gatewayApi:
+    enabled: true
+    # 차트가 Envoy Gateway를 또 설치하지 않게 한다
+    installEnvoy: false
+    # TLS는 NLB가 끝내므로 cert-manager가 필요 없다
+    configureCertmanager: false
+    gatewayRef:
+      name: default
+      namespace: envoy-gateway-system
+
+  psql:
+    host: gitlab-db-rw.gitlab.svc.cluster.local
+    port: 5432
+    database: gitlabhq_production
+    username: gitlab
+    password:
+      useSecret: true
+      # CloudNativePG가 만든 <클러스터>-app secret
+      secret: gitlab-db-app
+      key: password
+
+  redis:
+    host: gitlab-valkey.gitlab.svc.cluster.local
+    port: 6379
+    auth:
+      enabled: true
+      secret: gitlab-valkey
+      key: default
+
+  appConfig:
+    # 접속 정보(provider/region/use_iam_profile)는 secret에서 공통 주입하고 버킷만 지정한다.
+    # 기본 비활성인 externalDiffs/terraformState/ciSecureFiles/dependencyProxy 등은
+    # 버킷을 안 만들었으므로 켜면 업로드가 실패한다
+    object_store:
+      enabled: true
+      connection:
+        secret: gitlab-object-storage
+        key: connection
+    lfs:
+      bucket: ${project}-gitlab-lfs
+    artifacts:
+      bucket: ${project}-gitlab-artifacts
+    uploads:
+      bucket: ${project}-gitlab-uploads
+    packages:
+      bucket: ${project}-gitlab-packages
+    backups:
+      bucket: ${project}-gitlab-backups
+      tmpBucket: ${project}-gitlab-tmp
+
+  initialRootPassword:
+    secret: gitlab-initial-root-password
+    key: password
+
+  # 컨테이너 레지스트리 미사용. 아래 registry.enabled와 같이 꺼야 한다
+  registry:
+    enabled: false
+
+  # 클러스터 배포용 에이전트 서버. 끄면 kas Deployment와 kas 라우트가 사라진다
+  kas:
+    enabled: false
+
+  # name을 지정하면 차트가 SA 생성을 거부하므로 object-storage.tf에서 직접 만든다
+  serviceAccount:
+    enabled: true
+    create: false
+    name: gitlab
+
+installCertmanager: false
+nginx-ingress:
+  enabled: false
+gitlab-runner:
+  install: false
+prometheus:
+  install: false
+registry:
+  enabled: false
+
+gitlab:
+  gitlab-shell:
+    gatewayRoute:
+      # 공용 Gateway에 TCP 리스너가 없어 SSH를 못 붙인다. git은 HTTPS로만 쓴다.
+      # SSH가 필요하면 Gateway에 TCP 리스너를 추가하고 sectionName을 맞춘다
+      enabled: false
+
+  gitaly:
+    persistence:
+      storageClass: ebs
+      # 리포지토리 저장소. 확장은 되지만 축소는 안 된다
+      size: 50Gi
+
+  webservice:
+    gatewayRoute:
+      # 차트 기본값은 gitlab-web. 공용 Gateway에 그 리스너가 없어 붙지 않는다
+      sectionName: "https"
+    # 1대면 재배치 중 readiness 통과까지(5분+) 503이 난다
+    minReplicas: 2
+    # 차트 기본 10은 3.5Gi x 10 = 35Gi를 요구해 과하다
+    maxReplicas: 3
+    resources:
+      requests:
+        cpu: 300m
+        memory: 3584Mi
+      limits:
+        memory: 3584Mi
+    workhorse:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 100M
+        limits:
+          memory: 256Mi
+
+  sidekiq:
+    # HPA가 1<->2를 오가면 Karpenter가 노드를 띄웠다 지우는 진동이 생긴다. 2대 고정
+    minReplicas: 2
+    maxReplicas: 10
+
+  toolbox:
+    persistence:
+      enabled: false
+    backups:
+      objectStorage:
+        # backend 가 s3(기본) 면 toolbox 가 시작 시 이 파일을 무조건 복사한다.
+        # 안 걸면 파일이 없어 CrashLoopBackOff
+        config:
+          secret: gitlab-s3cfg
+          key: config
+      cron:
+        # IRSA 는 액세스 키가 없고 s3cmd 는 web identity 를 못 읽는다.
+        # 백업 전송은 awscli 로 넘긴다. cron.enabled 는 기본 false 라 지금은 동작 안 함
+        extraArgs: "--s3tool awscli"

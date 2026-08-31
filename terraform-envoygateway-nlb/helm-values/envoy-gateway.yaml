@@ -1,0 +1,7 @@
+# EnvoyGateway의 자체 Crd만 설치되도록
+crds:
+  enabled: true
+  gatewayAPI:
+    # 이 정책은 terraform-eks의 standard-install.yaml에 이미 들어 있다. 중복 생성 방지.
+    safeUpgradePolicy:
+      enabled: false

@@ -1,77 +1,102 @@
 # terraform-template
 
-`terraform-eks`가 만든 기반(VPC / EKS / Karpenter 노드) 위에 **별도 state로 얹는 스택의 템플릿**이다.
+`terraform-eks` 위에 새 스택을 올릴 때 복사하는 골격.
+provider 배선과 기반 클러스터 조회만 들어 있다. 나머지는 만들면서 채운다.
 
-샌드박스 헬름 차트 테스트처럼 기반을 건드리지 않고 리소스만 추가하고 싶을 때,
-이 디렉터리를 통째로 복사해서 새 스택을 만든다.
+작성 규칙은 [CLAUDE.md](../CLAUDE.md)에 있다. 이 문서는 그걸 반복하지 않고
+**새 스택을 시작할 때 실제로 확인해야 하는 것**만 담는다.
 
-## 원칙
-
-- **기반 스택은 읽기만 한다.** `terraform-eks`의 코드도 state도 수정하지 않는다.
-  필요한 값은 전부 AWS API 조회(`data.tf`)로 가져온다.
-- **state는 디렉터리 단위로 분리된다.** 이 스택을 `destroy`해도 기반 클러스터는 남는다.
-- **참조는 `locals`를 거친다.** 리소스에서 `data.*`를 직접 쓰지 않는다.
-  조회 방식을 나중에 `terraform_remote_state`로 바꾸더라도 `locals.tf`만 고치면 된다.
-
-## 파일 구조
-
-| 파일 | 역할 |
-|---|---|
-| `versions.tf` | Terraform / Provider 버전 고정 |
-| `backend.tf` | state 위치. 기본은 local, S3 예시는 주석 |
-| `providers.tf` | aws / kubernetes / helm / kubectl provider 설정 |
-| `variables.tf` | 입력 변수와 검증 |
-| `locals.tf` | 네이밍, 태그, 기반 스택 조회값 정리 |
-| `data.tf` | 기반 스택(EKS / VPC / 서브넷 / Route53 / ACM) 조회 |
-| `main.tf` | 네임스페이스 등 이 스택이 소유하는 리소스 |
-| `helm.tf` | Helm 릴리스 작성 위치 (주석 예시) |
-| `aws.tf` | AWS 리소스 작성 위치 (주석 예시) |
-| `outputs.tf` | 배선 확인용 출력 |
-| `helm-values/` | 차트 values 파일 (`.yaml` 또는 `.yaml.tftpl`) |
-
-## 사용법
+## 시작
 
 ```bash
-# 1. 새 스택 디렉터리로 복사
-cp -R terraform-template terraform-sandbox-helm
-cd terraform-sandbox-helm
+cp -R terraform-template terraform-<이름>
+cd terraform-<이름>
+cp terraform.tfvars.example terraform.tfvars   # project 를 terraform-eks 와 동일하게
 
-# 2. 변수 채우기 (project는 terraform-eks의 project와 동일해야 한다)
-cp terraform.tfvars.example terraform.tfvars
-vi terraform.tfvars
-
-# 3. 배선 확인 — 리소스를 추가하기 전에 먼저 돌려본다
 terraform init
-terraform plan
-
-# 4. 리소스 작성 후 배포
-terraform apply
+terraform plan      # 리소스를 넣기 전에 배선부터 확인
 ```
 
-3단계에서 `plan`이 통과하고 `cluster_name` / `vpc_id`가 채워지면
-기반 스택 조회와 클러스터 인증이 정상이라는 뜻이다.
+`plan` 이 통과하면 provider 인증과 기반 스택 조회가 정상이다.
 
-## 참조 가능한 기반 값
+## 파일
 
-`locals.tf`에 정리되어 있다.
-
-| local | 설명 |
+| 파일 | 내용 |
 |---|---|
-| `local.cluster_name` / `cluster_endpoint` / `cluster_version` | EKS 클러스터 |
-| `local.cluster_security_group_id` | 클러스터 기본 보안 그룹 |
-| `local.oidc_provider_arn` | IRSA용 OIDC provider ARN |
-| `local.vpc_id` / `vpc_cidr` | 기반 VPC |
-| `local.public_subnet_ids` / `private_subnet_ids` / `database_subnet_ids` | 계층별 서브넷 |
-| `local.karpenter_node_iam_role_name` | Karpenter 노드 IAM 역할 (EC2NodeClass 추가용) |
-| `local.hosted_zone_name` / `hosted_zone_id` | Route53 (변수를 비우면 `null`) |
-| `local.acm_certificate_arn` | ACM 인증서 (변수를 비우면 `null`) |
-| `local.target_namespace` | 배포 대상 네임스페이스 |
+| `providers.tf` | terraform 블록 + provider |
+| `main.tf` | data source, locals |
+| `variables.tf` | 변수 |
+| `terraform.tfvars` | 값. 버전은 "최신화: 날짜" 주석과 함께 |
+| `<기능>.tf` | 여기부터 직접 만든다 |
+| `helm-values/<이름>.yaml` | 차트 values (필요할 때 만든다) |
 
-## 주의
+파일을 늘리려고 쪼개지 않는다. `terraform-envoygateway-nlb` 는 리소스 전부가 `gateway.tf` 하나다.
 
-- **서브넷 조회는 Name 태그 규칙에 의존한다.** `<project>-public-*`, `<project>-private-*`,
-  `<project>-db-*`. `terraform-aws-modules/vpc`의 기본 접미사를 바꾸면 `data.tf`도 같이 고쳐야 한다.
-- **EKS 인증 토큰은 15분 만료다.** apply가 길어질 것 같으면 `providers.tf`의 `exec` 주석을 사용한다.
-- **차트 버전은 항상 고정한다.** `version`을 비우면 apply 시점마다 다른 차트가 설치된다.
-- 기반 스택이 이미 설치한 것(Karpenter, AWS Load Balancer Controller, ExternalDNS,
-  EBS CSI, metrics-server, Gateway API CRD)은 이 스택에서 다시 설치하지 않는다.
+## 기반이 이미 주는 것 — 다시 설치하지 말 것
+
+`terraform-eks`
+
+| 있는 것 | 참조 방법 |
+|---|---|
+| Karpenter + `default` NodePool | 전용 노드가 필요할 때만 NodeClass/NodePool 추가 |
+| AWS Load Balancer Controller | Service 어노테이션으로 NLB/ALB 생성 |
+| ExternalDNS | `source=service,ingress,gateway-httproute`. HTTPRoute hostname 이면 자동 |
+| EBS CSI + `ebs` StorageClass | `storageClass: ebs`. reclaimPolicy 는 `Delete` |
+| metrics-server, Pod Identity Agent | |
+| Gateway API CRD `1.6.1` standard | **소유권이 terraform-eks 에 있다.** 차트가 또 깔지 않게 끌 것 |
+
+`terraform-envoygateway-nlb`
+
+| 있는 것 | 참조 방법 |
+|---|---|
+| 공용 Gateway `default` | `parentRefs: {name: default, namespace: envoy-gateway-system, sectionName: https}` |
+| NLB + ACM 종단, 80→443 리다이렉트 | 리스너는 `http` / `https` 둘 다 protocol 은 HTTP |
+| `x-forwarded-proto: https` 주입 | 백엔드는 원 요청을 HTTPS 로 인식한다 |
+
+차트가 자기 게이트웨이 리스너 이름을 기대할 수 있다.
+GitLab 은 기본이 `gitlab-web` 이라 `sectionName` 을 `https` 로 바꿔야 붙었다.
+
+## destroy 를 먼저 설계할 것
+
+지울 때 한 번에 지워지게 만든다. 실제로 밟은 것들이다.
+
+- [ ] **S3** — `force_destroy = true`. 없으면 객체가 남은 버킷을 못 지워 destroy 가 통째로 막힌다
+- [ ] **Karpenter** — NodePool 과 EC2NodeClass 사이에 `time_sleep` 의 `destroy_duration`.
+      바로 지우면 NodeClaim 정리 전에 참조 대상이 사라져 노드가 고아가 된다
+- [ ] **네임스페이스** — helm 의 `create_namespace` 는 만들기만 하고 안 지운다.
+      `kubernetes_namespace_v1` 로 직접 소유한다
+- [ ] **finalizer 가 있는 CR** — operator 보다 먼저 지워지게 의존성을 걸고 간격을 둔다.
+      operator 가 먼저 죽으면 finalizer 가 안 풀려 오브젝트가 매달린다
+- [ ] **차트의 CRD 위치** — `crds/` 면 helm 이 절대 안 지우고 업그레이드도 안 한다.
+      `templates/` 면 릴리스 삭제가 CRD 를 클러스터 전역에서 지운다.
+      후자는 다른 스택이 같은 CRD 를 쓰면 같이 죽는다
+
+```bash
+# 삭제 순서 확인
+terraform graph -type=plan | grep ' -> '
+```
+
+## Helm 을 쓸 때
+
+- [ ] 차트를 받아서 열어본다. `helm show values` 로 실제 키를 확인하고 추측하지 않는다
+- [ ] 렌더 결과를 검증한다
+
+```bash
+helm template <릴리스> <차트> --version <버전> -n <네임스페이스> -f <values> \
+  | grep -E '^kind:' | sort | uniq -c
+```
+
+- [ ] 릴리스 Secret 은 **1MB** 한도가 있다. CRD 가 `templates/` 에 있는 차트는 여기서 터진다
+- [ ] YAML 에 같은 키를 두 번 쓰지 않는다. 뒤엣것이 앞엣것을 통째로 덮는다
+
+## 검증
+
+확인 안 한 건 README 에 안 했다고 쓴다.
+
+```bash
+terraform validate
+terraform plan                                    # 실제 클러스터 대상
+kubectl apply --dry-run=server -f <매니페스트>     # API 서버 검증
+```
+
+CRD 를 쓰는 리소스는 스키마와 필드를 대조한다. 문서와 실물이 다르면 실물이 맞다.

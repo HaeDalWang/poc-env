@@ -1,23 +1,21 @@
-# ------------------------------------------------------------------------------
-# 이 스택이 소유하는 리소스
+# 기본 서울 리전 terraform-eks와 동일하게 할 것
+data "aws_eks_cluster" "this" { name = var.project }
+
+data "aws_eks_cluster_auth" "this" { name = var.project }
+
+# terraform-eks 의 값이 더 필요하면 여기에 조회를 추가한다.
+# terraform_remote_state 를 쓰지 않는 이유는 CLAUDE.md 참조
 #
-# 기반 스택(terraform-eks)의 VPC / EKS / Karpenter / 애드온은 여기서 만들지 않는다.
-# 그 값들은 data.tf에서 조회해 locals.tf를 통해 참조만 한다.
-# ------------------------------------------------------------------------------
-
-# 배포 대상 네임스페이스
-resource "kubernetes_namespace_v1" "this" {
-  count = var.create_namespace ? 1 : 0
-
-  metadata {
-    name   = local.namespace
-    labels = local.labels
-  }
-}
-
-# 네임스페이스를 이 스택이 만들었든 아니든 동일하게 참조하기 위한 값
-# helm_release나 kubernetes_* 리소스의 namespace에는 이 값을 쓴다.
-# 이렇게 하면 create_namespace = true일 때 생성 순서도 함께 보장된다.
-locals {
-  target_namespace = var.create_namespace ? kubernetes_namespace_v1.this[0].metadata[0].name : local.namespace
-}
+# ACM 인증서
+# data "aws_acm_certificate" "this" {
+#   domain      = var.acm_certificate_domain
+#   statuses    = ["ISSUED"]
+#   most_recent = true
+# }
+#
+# IRSA 를 쓸 때 필요한 계정 ID 와 OIDC provider
+# data "aws_caller_identity" "this" {}
+# locals {
+#   oidc_issuer_host  = replace(data.aws_eks_cluster.this.identity[0].oidc[0].issuer, "https://", "")
+#   oidc_provider_arn = "arn:aws:iam::${data.aws_caller_identity.this.account_id}:oidc-provider/${local.oidc_issuer_host}"
+# }

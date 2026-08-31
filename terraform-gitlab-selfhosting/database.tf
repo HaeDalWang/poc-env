@@ -13,8 +13,9 @@ resource "kubernetes_namespace_v1" "cnpg" {
 
 # operator는 클러스터 전역이라 GitLab 전용 노드에 두지 않는다.
 #
-# 이 차트는 CRD를 templates/에 두므로 릴리스를 지우면 CNPG CRD가 클러스터에서 사라진다.
-# 다른 스택이 CloudNativePG를 쓰고 있다면 그쪽 DB까지 같이 죽는다. 지금은 이 스택뿐이다
+# CRD는 templates/에 있어 차트와 함께 업그레이드되지만, helm.sh/resource-policy: keep
+# 이 붙어 있어 uninstall 해도 지워지지 않는다(destroy 후 11개 잔존 확인).
+# 다른 스택이 CloudNativePG를 써도 안전하다. 대신 CRD는 수동으로 지워야 없어진다
 resource "helm_release" "cloudnative_pg" {
   name       = "cloudnative-pg"
   repository = "https://cloudnative-pg.github.io/charts"

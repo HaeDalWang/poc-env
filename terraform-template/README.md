@@ -67,9 +67,19 @@ GitLab 은 기본이 `gitlab-web` 이라 `sectionName` 을 `https` 로 바꿔야
       `kubernetes_namespace_v1` 로 직접 소유한다
 - [ ] **finalizer 가 있는 CR** — operator 보다 먼저 지워지게 의존성을 걸고 간격을 둔다.
       operator 가 먼저 죽으면 finalizer 가 안 풀려 오브젝트가 매달린다
-- [ ] **차트의 CRD 위치** — `crds/` 면 helm 이 절대 안 지우고 업그레이드도 안 한다.
-      `templates/` 면 릴리스 삭제가 CRD 를 클러스터 전역에서 지운다.
-      후자는 다른 스택이 같은 CRD 를 쓰면 같이 죽는다
+- [ ] **차트의 CRD 위치와 resource-policy** — 셋을 구분한다.
+      `crds/` 면 helm 이 설치만 하고 업그레이드도 삭제도 안 한다.
+      `templates/` 면 릴리스와 함께 업그레이드되고 삭제도 된다 — 다른 스택이 같은
+      CRD 를 쓰면 같이 죽는다. 단 `helm.sh/resource-policy: keep` 이 붙어 있으면
+      `templates/` 라도 삭제되지 않는다 (CloudNativePG 가 이 방식)
+
+```bash
+# 차트가 어느 쪽인지 확인
+helm pull <차트> --version <버전> --untar --untardir /tmp/c
+ls /tmp/c/*/crds/ 2>/dev/null
+grep -rl 'kind: CustomResourceDefinition' /tmp/c/*/templates/
+grep -rc 'resource-policy' /tmp/c/*/templates/
+```
 
 ```bash
 # 삭제 순서 확인

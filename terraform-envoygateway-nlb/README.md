@@ -60,5 +60,7 @@ kubectl -n envoy-gateway-system get svc \
 
 배포 완료. TLS 정책·소스 IP 어노테이션·80 리다이렉트까지 apply 반영됨.
 
-x-forwarded-proto 주입은 실제 백엔드로 확인하지 않았다. 앱을 붙인 뒤
-`x-forwarded-proto` 가 `https` 로 오는지 한 번 볼 것.
+**x-forwarded-proto 주입은 실제 백엔드로 확인됐다.** GitLab 을 붙였을 때
+`https://gitlab.<domain>/` 이 `https://gitlab.<domain>/users/sign_in` 로 302 를 냈다.
+헤더가 http 로 갔다면 GitLab 이 `http://` 로 리다이렉트해 루프가 났을 것이다.
+80 리다이렉트도 301 → `https://` 로 동작한다.

@@ -7,3 +7,6 @@
 *.tfvars
 *.auto.tfvars
 !*.tfvars.example
+
+# 임시 자료(자격증명이 섞일 수 있음)
+temp/

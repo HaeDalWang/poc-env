@@ -1,0 +1,148 @@
+
+==============================================================
+== Phase 3 검증  2026-09-08 13:24:53
+==============================================================
+
+-- EIP — Phase 1 과 같은 IP 인가 --
+---------------------------------------------------------------------------------------
+|                                  DescribeAddresses                                  |
++-----------------------------+----------------+--------------------------------------+
+|            assoc            |      ip        |                name                  |
++-----------------------------+----------------+--------------------------------------+
+|  eipassoc-094c1866be3971c87 |  <PUBLIC_IP> |  traefik-public-ap-northeast-2c-poc  |
+|  eipassoc-0bfa28a708f9166ad |  <PUBLIC_IP>   |  traefik-public-ap-northeast-2b-poc  |
+|  eipassoc-089d92010e17ffd3c |  <PUBLIC_IP>    |  traefik-public-ap-northeast-2a-poc  |
+|  eipassoc-09832125058645224 |  <PUBLIC_IP> |  traefik-public-ap-northeast-2d-poc  |
++-----------------------------+----------------+--------------------------------------+
+
+-- 신규 NLB (Terraform 생성) --
+ARN: arn:aws:elasticloadbalancing:ap-northeast-2:<ACCOUNT_ID>:loadbalancer/net/traefik-nlb-poc/448c0146466d5ba1
+--------------------------------------------------------------------
+|                       DescribeLoadBalancers                      |
++----------------------------+-------------------+-----------------+
+|            alloc           |        az         |       ip        |
++----------------------------+-------------------+-----------------+
+|  eipalloc-0350cf47fa0e72c0b|  ap-northeast-2b  |  <PUBLIC_IP>    |
+|  eipalloc-0770df3f3ee5fa50e|  ap-northeast-2c  |  <PUBLIC_IP>  |
+|  eipalloc-0554d55eb56328b87|  ap-northeast-2a  |  <PUBLIC_IP>     |
+|  eipalloc-058bf9d12ea5c8379|  ap-northeast-2d  |  <PUBLIC_IP>  |
++----------------------------+-------------------+-----------------+
+
+-- 리스너 — TLS 가 아니라 TCP 여야 한다 --
+-------------------
+|DescribeListeners|
++-------+---------+
+| port  |  proto  |
++-------+---------+
+|  80   |  TCP    |
+|  8000 |  TCP    |
+|  443  |  TCP    |
++-------+---------+
+
+-- V5. alb 타입 타겟그룹 — 타겟이 ALB 이고 healthy 인가 --
+### traefik-alb-tg-443
+443	TCP	alb
+--------------------------------------------------------------------------------------------------------------------------
+|                                                  DescribeTargetHealth                                                  |
++--------+---------------------------------------------------------------------------------------------------------------+
+|  reason|  None                                                                                                         |
+|  state |  healthy                                                                                                      |
+|  target|  arn:aws:elasticloadbalancing:ap-northeast-2:<ACCOUNT_ID>:loadbalancer/app/traefik-alb-poc/efdcaabfb6044ecf   |
++--------+---------------------------------------------------------------------------------------------------------------+
+### traefik-alb-tg-8000
+8000	TCP	alb
+--------------------------------------------------------------------------------------------------------------------------
+|                                                  DescribeTargetHealth                                                  |
++--------+---------------------------------------------------------------------------------------------------------------+
+|  reason|  None                                                                                                         |
+|  state |  healthy                                                                                                      |
+|  target|  arn:aws:elasticloadbalancing:ap-northeast-2:<ACCOUNT_ID>:loadbalancer/app/traefik-alb-poc/efdcaabfb6044ecf   |
++--------+---------------------------------------------------------------------------------------------------------------+
+### traefik-alb-tg-80
+80	TCP	alb
+--------------------------------------------------------------------------------------------------------------------------
+|                                                  DescribeTargetHealth                                                  |
++--------+---------------------------------------------------------------------------------------------------------------+
+|  reason|  None                                                                                                         |
+|  state |  healthy                                                                                                      |
+|  target|  arn:aws:elasticloadbalancing:ap-northeast-2:<ACCOUNT_ID>:loadbalancer/app/traefik-alb-poc/efdcaabfb6044ecf   |
++--------+---------------------------------------------------------------------------------------------------------------+
+
+-- preserve_client_ip — alb 타입은 항상 활성이고 변경 불가 --
+  traefik-alb-tg-443 : true
+  traefik-alb-tg-8000 : true
+  traefik-alb-tg-80 : true
+
+-- V7. Traefik PROXY protocol 설정 상태 --
+  (어노테이션 없음 — 제거됨)
+Version:      3.6.7
+Codename:     ramequin
+Go version:   go1.24.11
+Built:        2026-01-14T14:04:03Z
+OS/Arch:      linux/amd64
+
+-- 전체 경로 응답 — NLB → ALB(WAF) → Traefik → echo-app --
+### sms.seungdobae.com
+  :443  -> {"time": "2026-09-08T04:25:01", "pod": "echo-app-7f85db8df9-wtxw9", "path": "/", "host": "sms.seungdobae.com", "xff": "<PUBLIC_IP>, 10.0.3.228", "xfproto": "https", "peer": "10.0.13.181"}
+  :8000 -> {"time": "2026-09-08T04:25:01", "pod": "echo-app-7f85db8df9-wtxw9", "path": "/", "host": "sms.seungdobae.com:8000", "xff": "<PUBLIC_IP>, 10.0.3.228", "xfproto": "https", "peer": "10.0.13.181"}
+### testsms.seungdobae.com
+  :443  -> {"time": "2026-09-08T04:25:01", "pod": "echo-app-7f85db8df9-wtxw9", "path": "/", "host": "testsms.seungdobae.com", "xff": "<PUBLIC_IP>, 10.0.1.224", "xfproto": "https", "peer": "10.0.13.112"}
+  :8000 -> FAIL
+
+### manager.seungdobae.com
+  :443  -> {"time": "2026-09-08T04:25:01", "pod": "echo-app-7f85db8df9-9j7xz", "path": "/", "host": "manager.seungdobae.com", "xff": "<PUBLIC_IP>, 10.0.3.228", "xfproto": "https", "peer": "10.0.13.181"}
+  :8000 -> FAIL
+
+### etc.seungdobae.com
+  :443  -> {"time": "2026-09-08T04:25:01", "pod": "echo-app-7f85db8df9-wtxw9", "path": "/", "host": "etc.seungdobae.com", "xff": "<PUBLIC_IP>, 10.0.3.228", "xfproto": "https", "peer": "10.0.13.112"}
+  :8000 -> FAIL
+
+
+-- V6. 클라이언트 IP 보존 — 전체 경로에서 --
+내 공인 IP: <PUBLIC_IP>
+echo-app 응답의 xff 값이 위와 같아야 한다 (위 응답 참고)
+
+-- V8. 단절 시간 --
+로그: ~/poc-env/terraform-customer-a-support/results/downtime.log
+전체 시도: 1086
+실패 횟수: 777
+첫 실패:
+286:13:10:11 000 FAIL
+287:13:10:14 000 FAIL
+288:13:10:17 000 FAIL
+마지막 실패:
+1060:13:24:18 000 FAIL
+1061:13:24:19 000 FAIL
+1062:13:24:20 000 FAIL
+
+실패 구간 전후 20줄:
+13:10:06 200
+13:10:07 200
+13:10:08 200
+13:10:09 200
+13:10:10 200
+13:10:11 000 FAIL
+13:10:14 000 FAIL
+13:10:17 000 FAIL
+13:10:21 000 FAIL
+13:10:24 000 FAIL
+13:10:27 000 FAIL
+13:10:30 000 FAIL
+13:10:33 000 FAIL
+13:10:36 000 FAIL
+13:10:39 000 FAIL
+13:10:42 000 FAIL
+13:10:45 000 FAIL
+13:10:48 000 FAIL
+13:10:51 000 FAIL
+13:10:54 000 FAIL
+13:10:57 000 FAIL
+13:11:00 000 FAIL
+13:11:03 000 FAIL
+13:11:06 000 FAIL
+13:11:09 000 FAIL
+13:11:12 000 FAIL
+
+==============================================================
+== Phase 3 끝
+==============================================================

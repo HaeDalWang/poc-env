@@ -1,0 +1,118 @@
+
+==============================================================
+== Phase 2 검증  2026-09-08 13:03:32
+==============================================================
+ALB DNS: traefik-alb-poc-38453827.ap-northeast-2.elb.amazonaws.com
+ALB ARN: arn:aws:elasticloadbalancing:ap-northeast-2:<ACCOUNT_ID>:loadbalancer/app/traefik-alb-poc/efdcaabfb6044ecf
+
+-- V2. ACM 동시 연결 — 같은 인증서가 NLB 와 ALB 양쪽에 붙어 있는가 --
+이게 고객 질문 ①의 실물 증거다. InUseBy 에 net/ 과 app/ 이 둘 다 나와야 한다
+### sms  arn:aws:acm:ap-northeast-2:<ACCOUNT_ID>:certificate/95ee8922-747f-479b-8526-8f633bf9239d
+    arn:aws:elasticloadbalancing:ap-northeast-2:<ACCOUNT_ID>:loadbalancer/app/traefik-alb-poc/efdcaabfb6044ecf
+    arn:aws:elasticloadbalancing:ap-northeast-2:<ACCOUNT_ID>:loadbalancer/net/k8s-traefik-traefik-b2bd4f9355/e3c296fa6aca099b
+### testsms  arn:aws:acm:ap-northeast-2:<ACCOUNT_ID>:certificate/5ee75fd3-7944-4d8c-93b4-924e840f4b2b
+    arn:aws:elasticloadbalancing:ap-northeast-2:<ACCOUNT_ID>:loadbalancer/app/traefik-alb-poc/efdcaabfb6044ecf
+    arn:aws:elasticloadbalancing:ap-northeast-2:<ACCOUNT_ID>:loadbalancer/net/k8s-traefik-traefik-b2bd4f9355/e3c296fa6aca099b
+### manager  arn:aws:acm:ap-northeast-2:<ACCOUNT_ID>:certificate/2939188c-0d19-415a-983f-db4f3078efe7
+    arn:aws:elasticloadbalancing:ap-northeast-2:<ACCOUNT_ID>:loadbalancer/app/traefik-alb-poc/efdcaabfb6044ecf
+    arn:aws:elasticloadbalancing:ap-northeast-2:<ACCOUNT_ID>:loadbalancer/net/k8s-traefik-traefik-b2bd4f9355/e3c296fa6aca099b
+### etc  arn:aws:acm:ap-northeast-2:<ACCOUNT_ID>:certificate/31357336-86f5-479b-8fa2-1ff82a5a408c
+    arn:aws:elasticloadbalancing:ap-northeast-2:<ACCOUNT_ID>:loadbalancer/app/traefik-alb-poc/efdcaabfb6044ecf
+    arn:aws:elasticloadbalancing:ap-northeast-2:<ACCOUNT_ID>:loadbalancer/net/k8s-traefik-traefik-b2bd4f9355/e3c296fa6aca099b
+
+-- V3. ALB 리스너별 인증서 — 443 과 8000 에 다른 개수가 붙는가 --
+### ALB listener :443
+    arn:aws:acm:ap-northeast-2:<ACCOUNT_ID>:certificate/2939188c-0d19-415a-983f-db4f3078efe7	False
+    arn:aws:acm:ap-northeast-2:<ACCOUNT_ID>:certificate/31357336-86f5-479b-8fa2-1ff82a5a408c	False
+    arn:aws:acm:ap-northeast-2:<ACCOUNT_ID>:certificate/5ee75fd3-7944-4d8c-93b4-924e840f4b2b	False
+    arn:aws:acm:ap-northeast-2:<ACCOUNT_ID>:certificate/95ee8922-747f-479b-8526-8f633bf9239d	True
+    개수: 4
+### ALB listener :8000
+    arn:aws:acm:ap-northeast-2:<ACCOUNT_ID>:certificate/95ee8922-747f-479b-8526-8f633bf9239d	True
+    개수: 1
+
+ALB 전체 합계 (LB 당 25개 한도, default 제외):
+    default 제외 합계: 3
+
+-- V3-b. SNI 별로 다른 인증서가 나오는가 --
+  sms -> subject=CN=sms.seungdobae.com
+  testsms -> subject=CN=testsms.seungdobae.com
+  manager -> subject=CN=manager.seungdobae.com
+  etc -> subject=CN=etc.seungdobae.com
+  8000 포트:
+  sms -> subject=CN=sms.seungdobae.com
+  testsms -> subject=CN=sms.seungdobae.com
+  manager -> subject=CN=sms.seungdobae.com
+  etc -> subject=CN=sms.seungdobae.com
+
+-- V4. ALB 타겟 상태 — TargetGroupBinding 으로 Traefik Pod 가 등록됐는가 --
+NAME                             SERVICE-NAME   SERVICE-PORT   TARGET-TYPE   ARN                                                                                                                    NAME   AGE
+k8s-traefik-traefik-250b62be76   traefik        443            ip            arn:aws:elasticloadbalancing:ap-northeast-2:<ACCOUNT_ID>:targetgroup/k8s-traefik-traefik-250b62be76/0c9524ba89ceb565          31m
+k8s-traefik-traefik-2ae35d8664   traefik        80             ip            arn:aws:elasticloadbalancing:ap-northeast-2:<ACCOUNT_ID>:targetgroup/k8s-traefik-traefik-2ae35d8664/73dc3d03ebe95e4f          31m
+k8s-traefik-traefik-bd9114cbcd   traefik        8000           ip            arn:aws:elasticloadbalancing:ap-northeast-2:<ACCOUNT_ID>:targetgroup/k8s-traefik-traefik-bd9114cbcd/45ce3c9b31161f95          31m
+traefik-web                      traefik-tgb    8000           ip            arn:aws:elasticloadbalancing:ap-northeast-2:<ACCOUNT_ID>:targetgroup/traefik-web-poc/9a5b11fe6f90667c                         24m
+traefik-websecure                traefik-tgb    8443           ip            arn:aws:elasticloadbalancing:ap-northeast-2:<ACCOUNT_ID>:targetgroup/traefik-ws-poc/79b281a15249c4a7                          24m
+traefik-websecure-alt            traefik-tgb    8444           ip            arn:aws:elasticloadbalancing:ap-northeast-2:<ACCOUNT_ID>:targetgroup/traefik-wsalt-poc/126d4582afd94560                       24m
+### traefik-ws-poc
+----------------------------------------------
+|            DescribeTargetHealth            |
++--------------+-------+---------+-----------+
+|      ip      | port  | reason  |   state   |
++--------------+-------+---------+-----------+
+|  10.0.13.175 |  8443 |  None   |  healthy  |
+|  10.0.13.236 |  8443 |  None   |  healthy  |
++--------------+-------+---------+-----------+
+### traefik-wsalt-poc
+----------------------------------------------
+|            DescribeTargetHealth            |
++--------------+-------+---------+-----------+
+|      ip      | port  | reason  |   state   |
++--------------+-------+---------+-----------+
+|  10.0.13.175 |  8444 |  None   |  healthy  |
+|  10.0.13.236 |  8444 |  None   |  healthy  |
++--------------+-------+---------+-----------+
+### traefik-web-poc
+----------------------------------------------
+|            DescribeTargetHealth            |
++--------------+-------+---------+-----------+
+|      ip      | port  | reason  |   state   |
++--------------+-------+---------+-----------+
+|  10.0.13.175 |  8000 |  None   |  healthy  |
+|  10.0.13.236 |  8000 |  None   |  healthy  |
++--------------+-------+---------+-----------+
+
+-- V4-b. ALB 로 직접 붙어서 Traefik 까지 가는가 (NLB 미경유) --
+  sms :443  -> {"time": "2026-09-08T04:03:51", "pod": "echo-app-7f85db8df9-9j7xz", "path": "/", "host": "sms.seungdobae.com", "xff": "<PUBLIC_IP>, 10.0.1.224", "xfproto": "https", "peer": "10.0.13.236"}
+  testsms :443  -> {"time": "2026-09-08T04:03:51", "pod": "echo-app-7f85db8df9-9j7xz", "path": "/", "host": "testsms.seungdobae.com", "xff": "<PUBLIC_IP>, 10.0.1.224", "xfproto": "https", "peer": "10.0.13.175"}
+  manager :443  -> {"time": "2026-09-08T04:03:51", "pod": "echo-app-7f85db8df9-wtxw9", "path": "/", "host": "manager.seungdobae.com", "xff": "<PUBLIC_IP>, 10.0.1.224", "xfproto": "https", "peer": "10.0.13.175"}
+  etc :443  -> {"time": "2026-09-08T04:03:51", "pod": "echo-app-7f85db8df9-wtxw9", "path": "/", "host": "etc.seungdobae.com", "xff": "<PUBLIC_IP>, 10.0.1.224", "xfproto": "https", "peer": "10.0.13.236"}
+  sms :8000 -> {"time": "2026-09-08T04:03:51", "pod": "echo-app-7f85db8df9-9j7xz", "path": "/", "host": "sms.seungdobae.com:8000", "xff": "<PUBLIC_IP>, 10.0.1.224", "xfproto": "https", "peer": "10.0.13.236"}
+
+-- V6. 클라이언트 IP 보존 — 여기가 조용히 실패하는 항목이다 --
+내 공인 IP: <PUBLIC_IP>
+echo-app 이 본 XFF:
+{"time": "2026-09-08T04:03:51", "pod": "echo-app-7f85db8df9-wtxw9", "path": "/", "host": "sms.seungdobae.com", "xff": "<PUBLIC_IP>, 10.0.1.224", "xfproto": "https", "peer": "10.0.13.236"}
+Traefik ClientAddr (최근 10건):
+"ClientAddr":"10.0.3.228:26858"
+"ClientAddr":"10.0.3.228:33624"
+"ClientAddr":"10.0.1.224:53044"
+"ClientAddr":"10.0.1.224:57564"
+"ClientAddr":"10.0.1.224:33580"
+"ClientAddr":"10.0.3.228:4910"
+"ClientAddr":"10.0.3.228:63514"
+"ClientAddr":"10.0.3.228:18126"
+"ClientAddr":"10.0.1.224:31046"
+"ClientAddr":"10.0.1.224:31056"
+
+-- V9. WAF 연결 상태 --
+RESOURCEARNS	arn:aws:elasticloadbalancing:ap-northeast-2:<ACCOUNT_ID>:loadbalancer/app/traefik-alb-poc/efdcaabfb6044ecf
+
+-- 기존 NLB 는 계속 살아있는가 (Phase 2 는 무중단이어야 한다) --
+  sms -> {"time": "2026-09-08T04:03:53", "pod": "echo-app-7f85db8df9-wtxw9", "path": "/", "host": "sms.seungdobae.com", "xff": "<PUBLIC_IP>", "xfproto": "https", "peer": "10.0.13.236"}
+  testsms -> {"time": "2026-09-08T04:03:54", "pod": "echo-app-7f85db8df9-9j7xz", "path": "/", "host": "testsms.seungdobae.com", "xff": "<PUBLIC_IP>", "xfproto": "https", "peer": "10.0.13.236"}
+  manager -> {"time": "2026-09-08T04:03:54", "pod": "echo-app-7f85db8df9-wtxw9", "path": "/", "host": "manager.seungdobae.com", "xff": "<PUBLIC_IP>", "xfproto": "https", "peer": "10.0.13.236"}
+  etc -> {"time": "2026-09-08T04:03:54", "pod": "echo-app-7f85db8df9-wtxw9", "path": "/", "host": "etc.seungdobae.com", "xff": "<PUBLIC_IP>", "xfproto": "https", "peer": "10.0.13.236"}
+
+==============================================================
+== Phase 2 끝
+==============================================================

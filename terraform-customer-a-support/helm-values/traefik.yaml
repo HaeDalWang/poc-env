@@ -1,0 +1,117 @@
+# customer-a prod 의 helm-values/traefik.yaml 축약본
+#
+# 재현 대상만 남기고 뺀 것 — keycloak 대시보드 OIDC, fail2ban,
+# checkheadersplugin, api-gateway 라우터, internal/제한 NLB.
+# 이 PoC 의 검증 항목과 무관하고 외부 의존(Keycloak 서버)이 있다.
+
+providers:
+  file:
+    enabled: true
+    content: |
+      ${providers_file_content}
+  # Traefik CRD 는 kubectl 로 별도 설치했다 (Gateway API 만 제외).
+  # helm 의 skip_crds 는 그대로 두고 여기만 켠다 — README 의 사전 작업 참고
+  kubernetesCRD:
+    enabled: true
+  # Gateway API 도 같은 이유. customer-a 도 쓰지 않는다
+  kubernetesGateway:
+    enabled: false
+  kubernetesIngress:
+    enabled: true
+    publishedService:
+      enabled: true
+
+service:
+  # type 을 ClusterIP 로 바꾸는 것으로는 NLB 가 지워지지 않는다.
+  # LBC 는 type != LoadBalancer 인 Service 를 reconcile 대상에서 빼버려서
+  # NLB 가 고아로 남고 EIP 가 계속 점유된다 (finalizer 만 남음).
+  # Service 자체를 없애야 finalizer 가 돌면서 NLB 가 삭제되고 EIP 가 풀린다
+  enabled: ${service_enabled}
+  type: LoadBalancer
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: external
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: ip
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp
+    # 여기가 고객 질문 ②의 원인 — 포트 두 개가 한 줄에 묶여 있어서
+    # ssl-cert 목록이 443 과 8000 리스너에 그대로 복제된다
+    service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443,8000"
+    service.beta.kubernetes.io/aws-load-balancer-ssl-cert: ${acm_certificate_arn}
+    # ALB 는 PROXY protocol 을 못 받는다. Phase 3 에서 이 줄과 ports.*.proxyProtocol 을 함께 뺀다
+    service.beta.kubernetes.io/aws-load-balancer-proxy-protocol: "*"
+    service.beta.kubernetes.io/aws-load-balancer-subnets: ${subnet_ids}
+    service.beta.kubernetes.io/aws-load-balancer-eip-allocations: ${eip_allocations}
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+
+ports:
+  web:
+    proxyProtocol:
+      trustedIPs:
+        - ${vpc_cidr}
+    forwardedHeaders:
+      trustedIPs:
+        - ${vpc_cidr}
+    http:
+      middlewares:
+        - forwardedHeader-http@file
+    expose:
+      default: true
+  websecure:
+    targetPort: websecure
+    proxyProtocol:
+      trustedIPs:
+        - ${vpc_cidr}
+    forwardedHeaders:
+      trustedIPs:
+        - ${vpc_cidr}
+    http:
+      # NLB 가 TLS 를 끝내고 평문으로 넘기므로 Traefik 은 TLS 를 하지 않는다.
+      # ALB 로 바뀌어도 이 값은 그대로다 (ALB 가 대신 끝낸다)
+      tls:
+        enabled: false
+      middlewares:
+        - forwardedHeader-https@file
+    expose:
+      default: true
+  # NLB :8000 → TLS 종료 → Traefik :8444 (websecure 와 동일 동작)
+  websecure-alt:
+    port: 8444
+    exposedPort: 8000
+    protocol: TCP
+    proxyProtocol:
+      trustedIPs:
+        - ${vpc_cidr}
+    forwardedHeaders:
+      trustedIPs:
+        - ${vpc_cidr}
+    http:
+      tls:
+        enabled: false
+      middlewares:
+        - forwardedHeader-https@file
+    # 이 블록이 없으면 Service 에 8000 포트가 생기지 않는다.
+    # 그러면 LBC 가 "Unused port in ssl-ports annotation [8000]" 으로
+    # NLB 생성을 통째로 거부하고, helm 은 external IP 를 기다리다 타임아웃 난다
+    expose:
+      default: true
+
+# customer-a 은 autoscaling min 4 / max 20.
+# PoC 는 노드 비용 때문에 2로 고정한다. 1로 줄이면 rolling 시 단절이 생겨 V8 측정이 오염된다
+deployment:
+  replicas: 2
+
+autoscaling:
+  enabled: false
+
+# 클라이언트 IP 보존(V6) 확인은 이 로그의 ClientAddr 로 한다
+logs:
+  access:
+    enabled: true
+    format: json
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 512Mi

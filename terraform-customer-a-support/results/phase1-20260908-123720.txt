@@ -1,0 +1,102 @@
+
+==============================================================
+== Phase 1 검증  2026-09-08 12:37:20
+==============================================================
+
+-- 0. 환경 --
+{
+    "UserId": "AIDA4SB7Y6R4IFJ5R25AN",
+    "Account": "<ACCOUNT_ID>",
+    "Arn": "arn:aws:iam::<ACCOUNT_ID>:user/svvwac98"
+}
+eks-poc
+LBC image:
+public.ecr.aws/eks/aws-load-balancer-controller:v3.0.0
+
+-- 1. Traefik / echo-app 상태 --
+NAME                      READY   STATUS    RESTARTS   AGE     IP            NODE                                             NOMINATED NODE   READINESS GATES
+traefik-6f8fd8758-mggj8   1/1     Running   0          5m31s   10.0.13.175   ip-10-0-13-153.ap-northeast-2.compute.internal   <none>           <none>
+traefik-6f8fd8758-v6jdp   1/1     Running   0          5m31s   10.0.13.236   ip-10-0-13-153.ap-northeast-2.compute.internal   <none>           <none>
+NAME                        READY   STATUS    RESTARTS   AGE   IP            NODE                                             NOMINATED NODE   READINESS GATES
+echo-app-7f85db8df9-9j7xz   1/1     Running   0          15m   10.0.13.203   ip-10-0-13-153.ap-northeast-2.compute.internal   <none>           <none>
+echo-app-7f85db8df9-wtxw9   1/1     Running   0          15m   10.0.13.102   ip-10-0-13-153.ap-northeast-2.compute.internal   <none>           <none>
+NAME      TYPE           CLUSTER-IP      EXTERNAL-IP                                                                        PORT(S)                                     AGE
+traefik   LoadBalancer   172.20.96.164   <elb-hostname>.elb.ap-northeast-2.amazonaws.com   80:30111/TCP,443:31500/TCP,8000:32461/TCP   5m32s
+
+-- 2. EIP — 이 4개가 전환 후에도 같아야 한다 --
+---------------------------------------------------------------------------------------------------------------------
+|                                                 DescribeAddresses                                                 |
++----------------------------+------------------------------+----------------+--------------------------------------+
+|            alloc           |            assoc             |      ip        |                name                  |
++----------------------------+------------------------------+----------------+--------------------------------------+
+|  eipalloc-0770df3f3ee5fa50e|  eipassoc-08faf4ec628d47cf9  |  <PUBLIC_IP> |  traefik-public-ap-northeast-2c-poc  |
+|  eipalloc-0350cf47fa0e72c0b|  eipassoc-06ce4519da7da1cbf  |  <PUBLIC_IP>   |  traefik-public-ap-northeast-2b-poc  |
+|  eipalloc-0554d55eb56328b87|  eipassoc-0d37586d9843332de  |  <PUBLIC_IP>    |  traefik-public-ap-northeast-2a-poc  |
+|  eipalloc-058bf9d12ea5c8379|  eipassoc-081d9060fab06228a  |  <PUBLIC_IP> |  traefik-public-ap-northeast-2d-poc  |
++----------------------------+------------------------------+----------------+--------------------------------------+
+NLB ARN: arn:aws:elasticloadbalancing:ap-northeast-2:<ACCOUNT_ID>:loadbalancer/net/k8s-traefik-traefik-b2bd4f9355/e3c296fa6aca099b
+
+-- 3. NLB 리스너 --
+---------------------------------------------------------------------------------------------------------------
+|                                              DescribeListeners                                              |
++--------------------------------------------------------------------------------------------+-------+--------+
+|                                            cert                                            | port  | proto  |
++--------------------------------------------------------------------------------------------+-------+--------+
+|  arn:aws:acm:ap-northeast-2:<ACCOUNT_ID>:certificate/95ee8922-747f-479b-8526-8f633bf9239d  |  443  |  TLS   |
+|  None                                                                                      |  80   |  TCP   |
+|  arn:aws:acm:ap-northeast-2:<ACCOUNT_ID>:certificate/95ee8922-747f-479b-8526-8f633bf9239d  |  8000 |  TLS   |
++--------------------------------------------------------------------------------------------+-------+--------+
+
+-- V1. 인증서 복제 확인 — 443 과 8000 에 같은 목록이 붙는가 --
+### listener :443  (arn:aws:elasticloadbalancing:ap-northeast-2:<ACCOUNT_ID>:listener/net/k8s-traefik-traefik-b2bd4f9355/e3c296fa6aca099b/51b5d688ba1315f4)
+arn:aws:acm:ap-northeast-2:<ACCOUNT_ID>:certificate/2939188c-0d19-415a-983f-db4f3078efe7	False
+arn:aws:acm:ap-northeast-2:<ACCOUNT_ID>:certificate/31357336-86f5-479b-8fa2-1ff82a5a408c	False
+arn:aws:acm:ap-northeast-2:<ACCOUNT_ID>:certificate/5ee75fd3-7944-4d8c-93b4-924e840f4b2b	False
+arn:aws:acm:ap-northeast-2:<ACCOUNT_ID>:certificate/95ee8922-747f-479b-8526-8f633bf9239d	True
+개수: 4
+
+### listener :8000  (arn:aws:elasticloadbalancing:ap-northeast-2:<ACCOUNT_ID>:listener/net/k8s-traefik-traefik-b2bd4f9355/e3c296fa6aca099b/c952ed89c3c27e72)
+arn:aws:acm:ap-northeast-2:<ACCOUNT_ID>:certificate/2939188c-0d19-415a-983f-db4f3078efe7	False
+arn:aws:acm:ap-northeast-2:<ACCOUNT_ID>:certificate/31357336-86f5-479b-8fa2-1ff82a5a408c	False
+arn:aws:acm:ap-northeast-2:<ACCOUNT_ID>:certificate/5ee75fd3-7944-4d8c-93b4-924e840f4b2b	False
+arn:aws:acm:ap-northeast-2:<ACCOUNT_ID>:certificate/95ee8922-747f-479b-8526-8f633bf9239d	True
+개수: 4
+
+
+-- 4. 서비스 응답 — 443 / 8000 --
+### sms.seungdobae.com
+  :443  -> {"time": "2026-09-08T03:37:25", "pod": "echo-app-7f85db8df9-wtxw9", "path": "/", "host": "sms.seungdobae.com", "xff": "<PUBLIC_IP>", "xfproto": "https", "peer": "10.0.13.175"}
+  :8000 -> {"time": "2026-09-08T03:37:25", "pod": "echo-app-7f85db8df9-9j7xz", "path": "/", "host": "sms.seungdobae.com:8000", "xff": "<PUBLIC_IP>", "xfproto": "https", "peer": "10.0.13.175"}
+### testsms.seungdobae.com
+  :443  -> {"time": "2026-09-08T03:37:25", "pod": "echo-app-7f85db8df9-wtxw9", "path": "/", "host": "testsms.seungdobae.com", "xff": "<PUBLIC_IP>", "xfproto": "https", "peer": "10.0.13.175"}
+  :8000 -> {"time": "2026-09-08T03:37:25", "pod": "echo-app-7f85db8df9-9j7xz", "path": "/", "host": "testsms.seungdobae.com:8000", "xff": "<PUBLIC_IP>", "xfproto": "https", "peer": "10.0.13.175"}
+### manager.seungdobae.com
+  :443  -> {"time": "2026-09-08T03:37:25", "pod": "echo-app-7f85db8df9-wtxw9", "path": "/", "host": "manager.seungdobae.com", "xff": "<PUBLIC_IP>", "xfproto": "https", "peer": "10.0.13.236"}
+  :8000 -> {"time": "2026-09-08T03:37:25", "pod": "echo-app-7f85db8df9-wtxw9", "path": "/", "host": "manager.seungdobae.com:8000", "xff": "<PUBLIC_IP>", "xfproto": "https", "peer": "10.0.13.175"}
+### etc.seungdobae.com
+  :443  -> {"time": "2026-09-08T03:37:25", "pod": "echo-app-7f85db8df9-9j7xz", "path": "/", "host": "etc.seungdobae.com", "xff": "<PUBLIC_IP>", "xfproto": "https", "peer": "10.0.13.236"}
+  :8000 -> {"time": "2026-09-08T03:37:25", "pod": "echo-app-7f85db8df9-9j7xz", "path": "/", "host": "etc.seungdobae.com:8000", "xff": "<PUBLIC_IP>", "xfproto": "https", "peer": "10.0.13.175"}
+
+-- V6 기준선. 내 공인 IP 와 Traefik 이 본 IP --
+내 공인 IP: <PUBLIC_IP>
+Traefik access log ClientAddr (최근 10건):
+"ClientAddr":"<PUBLIC_IP>:37680"
+"ClientAddr":"<PUBLIC_IP>:37680"
+"ClientAddr":"<PUBLIC_IP>:34884"
+"ClientAddr":"<PUBLIC_IP>:34884"
+"ClientAddr":"<PUBLIC_IP>:33896"
+"ClientAddr":"<PUBLIC_IP>:33896"
+"ClientAddr":"<PUBLIC_IP>:35648"
+"ClientAddr":"<PUBLIC_IP>:35648"
+"ClientAddr":"<PUBLIC_IP>:62031"
+"ClientAddr":"<PUBLIC_IP>:62033"
+
+-- 5. TLS 종료 지점 확인 — NLB 가 끝내고 평문을 넘기는가 --
+subject=CN=sms.seungdobae.com
+issuer=C=US, O=Amazon, CN=Amazon RSA 2048 M04
+notBefore=Sep  8 00:00:00 2026 GMT
+notAfter=Mar 24 23:59:59 2027 GMT
+
+==============================================================
+== Phase 1 끝
+==============================================================
